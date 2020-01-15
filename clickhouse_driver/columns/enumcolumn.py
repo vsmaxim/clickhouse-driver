@@ -12,8 +12,8 @@ class Enum:
     def __getitem__(self, item):
         return self._values[item]
 
-    def __call__(self, value):
-        return self._values
+    def __call__(self, name):
+        return self._reverse_values[name]
 
 
 class EnumColumn(IntColumn):
