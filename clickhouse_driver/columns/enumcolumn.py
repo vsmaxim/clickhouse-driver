@@ -1,8 +1,19 @@
-from enum import Enum
-
 from .. import errors
 from ..util import compat
 from .intcolumn import IntColumn
+
+
+# TODO: Overview changes and probably make a pr
+class Enum:
+    def __init__(self, values):
+        self._values = values
+        self._reverse_values = {v:k for k, v in values.items()}
+
+    def __getitem__(self, item):
+        return self._values[item]
+
+    def __call__(self, value):
+        return self._values
 
 
 class EnumColumn(IntColumn):
@@ -12,46 +23,27 @@ class EnumColumn(IntColumn):
         self.enum_cls = enum_cls
         super(EnumColumn, self).__init__(**kwargs)
 
-    def before_write_items(self, items, nulls_map=None):
-        null_value = self.null_value
-
+    def before_write_item(self, value):
+        source_value = value.name if isinstance(value, Enum) else value
         enum_cls = self.enum_cls
 
-        for i, item in enumerate(items):
-            if nulls_map and nulls_map[i]:
-                items[i] = null_value
-                continue
-
-            source_value = item.name if isinstance(item, Enum) else item
-
-            # Check real enum value
-            try:
-                if isinstance(source_value, compat.string_types):
-                    items[i] = enum_cls[source_value].value
-                else:
-                    items[i] = enum_cls(source_value).value
-            except (ValueError, KeyError):
-                choices = ', '.join(
-                    "'{}' = {}".format(x.name.replace("'", r"\'"), x.value)
-                    for x in enum_cls
-                )
-                enum_str = '{}({})'.format(enum_cls.__name__, choices)
-
-                raise errors.LogicalError(
-                    "Unknown element '{}' for type {}"
-                    .format(source_value, enum_str)
-                )
-
-    def after_read_items(self, items, nulls_map=None):
-        enum_cls = self.enum_cls
-
-        if nulls_map is None:
-            return tuple(enum_cls(item).name for item in items)
-        else:
-            return tuple(
-                (None if is_null else enum_cls(items[i]).name)
-                for i, is_null in enumerate(nulls_map)
+        # Check real enum value
+        try:
+            return enum_cls[source_value]
+        except (ValueError, KeyError):
+            choices = ', '.join(
+                "'{}' = {}".format(x.name.replace("'", r"\'"), x.value)
+                for x in enum_cls
             )
+            enum_str = '{}({})'.format(enum_cls.__name__, choices)
+
+            raise errors.LogicalError(
+                "Unknown element '{}' for type {}"
+                .format(source_value, enum_str)
+            )
+
+    def after_read_item(self, value):
+        return self.enum_cls(value)
 
 
 class Enum8Column(EnumColumn):
@@ -74,7 +66,7 @@ def create_enum_column(spec, column_options):
         params = spec[7:-1]
         cls = Enum16Column
 
-    return cls(Enum(cls.ch_type, _parse_options(params)), **column_options)
+    return cls(Enum(_parse_options(params)), **column_options)
 
 
 def _parse_options(option_string):
